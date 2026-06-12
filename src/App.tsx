@@ -6,7 +6,8 @@
 import { useEffect, useState } from "react";
 import { 
   fetchChronicles, 
-  incrementViews 
+  incrementViews,
+  SQL_SCHEMA_BLUEPRINT
 } from "./lib/supabase";
 import { WartaCote } from "./types";
 import { 
@@ -25,13 +26,19 @@ import {
   Library,
   Pin,
   Menu,
-  X
+  X,
+  Database,
+  AlertCircle,
+  Copy,
+  Check
 } from "lucide-react";
 
 export default function App() {
   const [chronicles, setChronicles] = useState<WartaCote[]>([]);
   const [filteredChronicles, setFilteredChronicles] = useState<WartaCote[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
   
   // Navigation View: "home" | "admin"
   const [view, setView] = useState<"home" | "admin">("home");
@@ -48,11 +55,18 @@ export default function App() {
   // Initial load
   const loadChronicles = async () => {
     setIsLoading(true);
+    setDbError(null);
     try {
       const res = await fetchChronicles();
-      setChronicles(res.data);
-    } catch (err) {
+      if (res.error) {
+        setDbError(res.error);
+        setChronicles([]);
+      } else {
+        setChronicles(res.data);
+      }
+    } catch (err: any) {
       console.error(err);
+      setDbError(err?.message || String(err));
     } finally {
       setIsLoading(false);
     }
@@ -297,15 +311,75 @@ export default function App() {
                 <span className="text-[9px] font-mono text-gold-light/40 text-right">COTE ARCHIVE</span>
               </div>
 
+              {dbError && (
+                <div className="mb-8 p-6 rounded bg-royal-dark/95 border-2 border-dashed border-rose-500/40 text-[#efebd8] text-xs relative overflow-hidden select-text animate-fade-in max-w-3xl mx-auto">
+                  <div className="absolute top-2 left-2 w-3 h-3 border-t border-l border-rose-500/30" />
+                  <div className="absolute top-2 right-2 w-3 h-3 border-t border-r border-rose-500/30" />
+                  <div className="absolute bottom-2 left-2 w-3 h-3 border-b border-l border-rose-500/30" />
+                  <div className="absolute bottom-2 right-2 w-3 h-3 border-b border-r border-rose-500/30" />
+                  
+                  <div className="flex gap-4 items-start">
+                    <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/30 text-rose-400 shrink-0 select-none">
+                      <Database className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <h3 className="font-heading text-xs font-bold uppercase tracking-wider text-rose-400">DATABASE SUPABASE BELUM SIAP / EROR</h3>
+                      <p className="text-[11px] leading-relaxed text-gold-light/80">
+                        {dbError}
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-gold-light/60">
+                        Aplikasi ini mendeteksi database Supabase belum terkonfigurasi dengan penuh. Silakan selesaikan masalah ini dengan menyalin dan menjalankan perintah SQL Blueprint di bawah ini langsung di<strong> Supabase SQL Editor</strong> milik Anda:
+                      </p>
+                      
+                      <div className="mt-3 relative bg-black/40 border border-gold/10 rounded p-3 select-text max-h-40 overflow-y-auto font-mono text-[9px] text-green-300 whitespace-pre scrollbar-thin scrollbar-thumb-gold/20">
+                        {SQL_SCHEMA_BLUEPRINT}
+                      </div>
+
+                      <div className="flex items-center gap-3 mt-3">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(SQL_SCHEMA_BLUEPRINT);
+                            setCopiedSql(true);
+                            setTimeout(() => setCopiedSql(false), 2000);
+                          }}
+                          className="px-4 py-1.5 bg-gold hover:bg-gold-light text-royal-dark font-heading font-semibold text-[9px] tracking-widest uppercase rounded cursor-pointer transition flex items-center gap-1.5 w-fit select-none"
+                        >
+                          {copiedSql ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" /> BERHASIL DISALIN!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" /> SALIN SQL CONFIG
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={loadChronicles}
+                          className="px-3.5 py-1.5 border border-gold/30 hover:border-gold hover:text-gold text-gold-light font-mono text-[9px] uppercase tracking-wider rounded transition cursor-pointer select-none"
+                        >
+                          MUAT ULANG DATA
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {isLoading ? (
                 <div className="py-24 text-center">
                   <div className="inline-block w-8 h-8 rounded-full border-2 border-gold border-t-transparent animate-spin mb-4" />
                   <p className="font-heading text-xs tracking-widest text-gold/60 uppercase">Membuka Gulungan Sejarah...</p>
                 </div>
-              ) : filteredChronicles.length === 0 ? (
+              ) : filteredChronicles.length === 0 && !dbError ? (
                 <div className="py-16 text-center border border-gold/10 rounded bg-royal-dark/20 max-w-xl mx-auto">
                   <BookOpen className="w-12 h-12 text-gold-dark/20 mx-auto mb-3" />
                   <p className="text-xs text-gold-light/60">Tidak ada konten warta yang tersedia untuk kategori ini.</p>
+                </div>
+              ) : filteredChronicles.length === 0 && dbError ? (
+                <div className="py-12 text-center">
+                  <p className="text-xs text-rose-300/60 font-mono">Arsip kosong karena kegagalan koneksi database.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

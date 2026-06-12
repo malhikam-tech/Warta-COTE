@@ -129,31 +129,11 @@ VALUES
 ('Warta Hubungan Luar Negeri: Perjanjian Damai Aliansi Utara', 'Berita', 'COTE resmi menandatangani pakta non-agresi dengan Dinasti Nusantara bagian timur guna kelestarian arsip sejarah bersama.', 'Setelah negosiasi diplomatik yang panjang di meja emas kekaisaran, kedua belah pihak sepakat menjaga netralitas arsip bersejarah. Perjanjian ini menjamin akses bebas ilmu pengetahuan bagi sejarawan dari kedua kubu. Ini merupakan langkah besar dalam menjaga keseimbangan kekuasaan dan memperluas cakrawala pendidikan budaya klasik bagi seluruh anggota.', 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800', 'Chamberlain', 215, false);
 `;
 
-// Keep track of deleted Supabase IDs so they don't reappear if we pull from Supabase
-const DELETED_IDS_KEY = "cote_deleted_ids";
-
-function getDeletedIds(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(DELETED_IDS_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function addDeletedId(id: string) {
-  const deleted = getDeletedIds();
-  if (!deleted.includes(id)) {
-    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify([...deleted, id]));
-  }
-}
-
+// Keep track of deleted Supabase IDs (no longer needed, we keep clean direct operation)
 /**
  * Initialize / fetch content
  */
-export async function fetchChronicles(): Promise<{ data: WartaCote[]; fromDb: boolean }> {
-  const localItems = getFallbackData();
-  const deletedIds = getDeletedIds();
-
+export async function fetchChronicles(): Promise<{ data: WartaCote[]; fromDb: boolean; error?: string }> {
   try {
     // Try to reach Supabase
     const { data, error } = await supabase
@@ -162,54 +142,19 @@ export async function fetchChronicles(): Promise<{ data: WartaCote[]; fromDb: bo
       .order("is_pinned", { ascending: false })
       .order("created_at", { ascending: false });
 
-    if (error || !data) {
-      console.warn("Supabase relation not ready yet or read block, loading Local Storage cache:", error);
-      IS_LOCAL_FALLBACK = true;
-      return { data: localItems, fromDb: false };
+    if (error) {
+      console.error("Supabase select error:", error);
+      return { 
+        data: [], 
+        fromDb: false, 
+        error: `Supabase Error: ${error.message} (Kode: ${error.code || "N/A"}). Silakan pastikan tabel dan kebijakan RLS telah dibuat menggunakan perintah SQL Blueprint.` 
+      };
     }
 
-    // Successfully returned DB contents
-    IS_LOCAL_FALLBACK = false;
-
-    // Filter out any items that are deleted locally
-    const activeDbItems = (data as WartaCote[]).filter(item => !deletedIds.includes(item.id));
-    
-    // Map of local overrides
-    const localMap = new Map(localItems.map(item => [item.id, item]));
-    
-    // Replace DB items with local overrides if they exist
-    const mergedDbItems = activeDbItems.map(dbItem => {
-      if (localMap.has(dbItem.id)) {
-        return localMap.get(dbItem.id)!;
-      }
-      return dbItem;
-    });
-
-    // Get strictly local items (new items created only in local storage)
-    const dbIds = new Set(activeDbItems.map(item => item.id));
-    const localOnlyItems = localItems.filter(item => item.id.startsWith("local-") && !dbIds.has(item.id));
-
-    // Combine them
-    const combined = [...localOnlyItems, ...mergedDbItems];
-
-    // Sort by is_pinned, then by created_at descending
-    combined.sort((a, b) => {
-      const aPinned = a.is_pinned ? 1 : 0;
-      const bPinned = b.is_pinned ? 1 : 0;
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned;
-      }
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-
-    // Sync fallback cache
-    saveFallbackData(combined);
-
-    return { data: combined, fromDb: true };
-  } catch (err) {
-    console.error("Supabase endpoint unreachable, loading fallback engine:", err);
-    IS_LOCAL_FALLBACK = true;
-    return { data: localItems, fromDb: false };
+    return { data: (data || []) as WartaCote[], fromDb: true };
+  } catch (err: any) {
+    console.error("Supabase endpoint unreachable:", err);
+    return { data: [], fromDb: false, error: `Koneksi Gagal: ${err.message || err}` };
   }
 }
 
@@ -235,21 +180,18 @@ export async function insertChronicle(item: Omit<WartaCote, "id" | "views">): Pr
       console.error("Supabase insert error:", error);
       return { 
         success: false, 
-        error: `Supabase Error: ${error.message} (Kode: ${error.code || "N/A"}). Silakan pastikan tabel dan RLS di Supabase sudah dibuat menggunakan perintah SQL Blueprint.` 
+        error: `Supabase inserter gagal: ${error.message} (Kode: ${error.code || "N/A"}). Pastikan tabel dan kebijakan RLS sudah dibuat.` 
       };
     }
 
     if (data && data[0]) {
-      // Also cache to local items so that local memory is synchronized
-      const localItems = getFallbackData();
-      saveFallbackData([data[0] as WartaCote, ...localItems]);
       return { success: true, data: data[0] as WartaCote };
     }
     
-    return { success: false, error: "Database tidak mengembalikan nilai atau kosong." };
+    return { success: false, error: "Database tidak mengembalisi nilai atau baris kosong." };
   } catch (err: any) {
     console.error("Supabase catch error during insert:", err);
-    return { success: false, error: `Koneksi Gagalan: ${err.message || err}` };
+    return { success: false, error: `Koneksi Gagal: ${err.message || err}` };
   }
 }
 
@@ -258,16 +200,6 @@ export async function insertChronicle(item: Omit<WartaCote, "id" | "views">): Pr
  */
 export async function updateChronicle(id: string, updates: Partial<WartaCote>): Promise<{ success: boolean; error?: string }> {
   try {
-    if (id.startsWith("local-")) {
-      const localItems = getFallbackData();
-      const idx = localItems.findIndex((it) => it.id === id);
-      if (idx !== -1) {
-        localItems[idx] = { ...localItems[idx], ...updates };
-        saveFallbackData(localItems);
-      }
-      return { success: true };
-    }
-
     const { error } = await supabase
       .from("warta_cote")
       .update(updates)
@@ -278,17 +210,10 @@ export async function updateChronicle(id: string, updates: Partial<WartaCote>): 
       return { success: false, error: `Supabase Error: ${error.message} (Kode: ${error.code || "N/A"})` };
     }
 
-    // Success on DB, sync to local cache
-    const localItems = getFallbackData();
-    const idx = localItems.findIndex((it) => it.id === id);
-    if (idx !== -1) {
-      localItems[idx] = { ...localItems[idx], ...updates };
-      saveFallbackData(localItems);
-    }
     return { success: true };
   } catch (err: any) {
     console.error("Supabase update exception:", err);
-    return { success: false, error: `Koneksi Gagalan: ${err.message || err}` };
+    return { success: false, error: `Koneksi Gagal: ${err.message || err}` };
   }
 }
 
@@ -297,13 +222,6 @@ export async function updateChronicle(id: string, updates: Partial<WartaCote>): 
  */
 export async function deleteChronicle(id: string): Promise<{ success: boolean; error?: string }> {
   try {
-    if (id.startsWith("local-")) {
-      const localItems = getFallbackData();
-      const filtered = localItems.filter((it) => it.id !== id);
-      saveFallbackData(filtered);
-      return { success: true };
-    }
-
     const { error } = await supabase
       .from("warta_cote")
       .delete()
@@ -314,16 +232,10 @@ export async function deleteChronicle(id: string): Promise<{ success: boolean; e
       return { success: false, error: `Supabase Error: ${error.message} (Kode: ${error.code || "N/A"})` };
     }
 
-    // Delete from cache too
-    const localItems = getFallbackData();
-    const filtered = localItems.filter((it) => it.id !== id);
-    saveFallbackData(filtered);
-    addDeletedId(id);
-
     return { success: true };
   } catch (err: any) {
     console.error("Supabase delete exception:", err);
-    return { success: false, error: `Koneksi Gagalan: ${err.message || err}` };
+    return { success: false, error: `Koneksi Gagal: ${err.message || err}` };
   }
 }
 
@@ -331,41 +243,17 @@ export async function deleteChronicle(id: string): Promise<{ success: boolean; e
  * Increments page views
  */
 export async function incrementViews(item: WartaCote): Promise<void> {
-  const newViews = item.views + 1;
+  const newViews = (item.views || 0) + 1;
   try {
-    if (!item.id.startsWith("local-")) {
-      await supabase
-        .from("warta_cote")
-        .update({ views: newViews })
-        .eq("id", item.id);
+    const { error } = await supabase
+      .from("warta_cote")
+      .update({ views: newViews })
+      .eq("id", item.id);
+    if (error) {
+      console.error("Supabase view increment fail:", error);
     }
-  } catch {
-    // Silent fail okay for analytics
-  }
-  
-  // Also update local fallback cache
-  const localItems = getFallbackData();
-  const idx = localItems.findIndex((it) => it.id === item.id);
-  if (idx !== -1) {
-    localItems[idx].views = newViews;
-    saveFallbackData(localItems);
+  } catch (err) {
+    console.error("Supabase view increment exception:", err);
   }
 }
 
-// Helpers for localStorage Cache
-function getFallbackData(): WartaCote[] {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_CHRONICLES));
-    return DEFAULT_CHRONICLES;
-  }
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return DEFAULT_CHRONICLES;
-  }
-}
-
-function saveFallbackData(items: WartaCote[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-}

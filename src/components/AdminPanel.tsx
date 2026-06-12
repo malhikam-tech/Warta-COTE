@@ -70,6 +70,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
   const [formError, setFormError] = useState("");
   const [isSubmitLoading, setIsSubmitLoading] = useState(false);
 
+  // Custom alert & confirm modal states
+  const [modalAlert, setModalAlert] = useState<{ 
+    isOpen: boolean; 
+    title: string; 
+    message: string; 
+  } | null>(null);
+
+  const [modalConfirm, setModalConfirm] = useState<{ 
+    isOpen: boolean; 
+    title: string; 
+    message: string; 
+    onConfirm: () => void;
+  } | null>(null);
+
+  const showAlert = (title: string, message: string) => {
+    setModalAlert({ isOpen: true, title, message });
+  };
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setModalConfirm({ isOpen: true, title, message, onConfirm });
+  };
+
   // Handle Authentication Gate
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,14 +205,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Apakah anda yakin ingin menghapus warta sejarah ini untuk selamanya?")) {
-      const res = await deleteChronicle(id);
-      if (res.success) {
-        onRefresh();
-      } else {
-        alert(res.error || "Gagal menghapus warta.");
+    showConfirm(
+      "KONFIRMASI ARSIP", 
+      "Apakah anda yakin ingin menghapus warta sejarah ini untuk selamanya dari catatan kerajaan?", 
+      async () => {
+        const res = await deleteChronicle(id);
+        if (res.success) {
+          onRefresh();
+          showAlert("UPACARA BERHASIL", "Lembaran warta sejarah berhasil dimusnahkan dari arsip!");
+        } else {
+          showAlert("KENDALA SISTEM", res.error || "Gagal menghapus warta.");
+        }
       }
-    }
+    );
   };
 
   if (!isAuthenticated) {
@@ -254,8 +281,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
   }
 
   return (
-    <div className="relative w-full rounded bg-imperial-paper border border-gold/20 shadow-2xl p-6 md:p-8 min-h-[500px]" id="cote-admin-dashboard">
-      <ImperialCorners />
+    <>
+      <div className="relative w-full rounded bg-imperial-paper border border-gold/20 shadow-2xl p-6 md:p-8 min-h-[500px]" id="cote-admin-dashboard">
+        <ImperialCorners />
 
       {/* Header Dashboard */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-gold/10 pb-6 mb-6">
@@ -638,6 +666,81 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
           </div>
         </form>
       )}
-    </div>
+      </div>
+
+      {/* CUSTOM CONFIRM DIALOG - ESTETIKA COTE */}
+      {modalConfirm && modalConfirm.isOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-royal-dark/90 backdrop-blur-md">
+          <div className="relative w-full max-w-sm bg-[#efebd8] text-amber-950 rounded shadow-2xl p-6 border-8 border-double border-amber-900/15 overflow-hidden select-none animate-fade-in text-center">
+            <div className="absolute top-2 left-2 w-3.5 h-3.5 border-t-2 border-l-2 border-amber-900/30" />
+            <div className="absolute top-2 right-2 w-3.5 h-3.5 border-t-2 border-r-2 border-amber-900/30" />
+            <div className="absolute bottom-2 left-2 w-3.5 h-3.5 border-b-2 border-l-2 border-amber-900/30" />
+            <div className="absolute bottom-2 right-2 w-3.5 h-3.5 border-b-2 border-r-2 border-amber-900/30" />
+
+            <div className="mx-auto w-12 h-12 rounded-full border border-amber-900/40 flex items-center justify-center bg-amber-900/5 mb-3 text-amber-900 animate-bounce">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+
+            <h3 className="font-heading text-xs font-bold uppercase tracking-[0.2em] text-amber-950 mb-2">
+              {modalConfirm.title}
+            </h3>
+            
+            <p className="text-[11px] text-amber-900/90 mb-5 leading-relaxed font-sans px-2">
+              {modalConfirm.message}
+            </p>
+
+            <div className="flex gap-2.5 items-center justify-center">
+              <button
+                onClick={() => setModalConfirm(null)}
+                className="px-4 py-1.5 bg-amber-950/10 hover:bg-amber-950/25 text-amber-950 font-mono text-[9px] uppercase tracking-wider rounded transition cursor-pointer"
+              >
+                BATALKAN
+              </button>
+              <button
+                onClick={() => {
+                  const callback = modalConfirm.onConfirm;
+                  setModalConfirm(null);
+                  callback();
+                }}
+                className="px-5 py-1.5 bg-amber-900 hover:bg-amber-950 text-[#efebd8] font-mono text-[9px] uppercase tracking-wider rounded transition shadow cursor-pointer"
+              >
+                YA, HAPUSKAN
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM ALERT DIALOG - ESTETIKA COTE */}
+      {modalAlert && modalAlert.isOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-royal-dark/90 backdrop-blur-md">
+          <div className="relative w-full max-w-sm bg-[#efebd8] text-amber-950 rounded shadow-2xl p-6 border-8 border-double border-amber-900/15 overflow-hidden select-none animate-fade-in text-center">
+            <div className="absolute top-2 left-2 w-3.5 h-3.5 border-t-2 border-l-2 border-amber-900/30" />
+            <div className="absolute top-2 right-2 w-3.5 h-3.5 border-t-2 border-r-2 border-amber-900/30" />
+            <div className="absolute bottom-2 left-2 w-3.5 h-3.5 border-b-2 border-l-2 border-amber-900/30" />
+            <div className="absolute bottom-2 right-2 w-3.5 h-3.5 border-b-2 border-r-2 border-amber-900/30" />
+
+            <div className="mx-auto w-12 h-12 rounded-full border border-amber-900/30 flex items-center justify-center bg-amber-900/5 mb-3 text-amber-900">
+              <Plus className="w-5 h-5 rotate-45" />
+            </div>
+
+            <h3 className="font-heading text-xs font-bold uppercase tracking-[0.2em] text-amber-950 mb-2">
+              {modalAlert.title}
+            </h3>
+
+            <p className="text-[11px] text-amber-900/90 mb-5 leading-relaxed font-sans px-3">
+              {modalAlert.message}
+            </p>
+
+            <button
+              onClick={() => setModalAlert(null)}
+              className="px-6 py-1.5 bg-amber-900 hover:bg-amber-950 text-[#efebd8] font-heading font-semibold text-[9px] tracking-widest uppercase rounded cursor-pointer transition shadow"
+            >
+              MENGERTI
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
