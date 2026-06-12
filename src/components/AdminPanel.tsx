@@ -48,12 +48,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [passwordInput, setPasswordInput] = useState<string>("");
   const [authError, setAuthError] = useState<string>("");
+  const [isLoginLoading, setIsLoginLoading] = useState<boolean>(false);
 
   // Change Password State
   const [oldPassword, setOldPassword] = useState<string>("");
   const [newPassword, setNewPassword] = useState<string>("");
   const [confirmNewPassword, setConfirmNewPassword] = useState<string>("");
   const [pwdMessage, setPwdMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [isPwdLoading, setIsPwdLoading] = useState<boolean>(false);
 
   // Manage News State
   const [activeTab, setActiveTab] = useState<"list" | "form">("list");
@@ -92,26 +94,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
     setModalConfirm({ isOpen: true, title, message, onConfirm });
   };
 
-  // Handle Authentication Gate
-  const handleLogin = (e: React.FormEvent) => {
+  // Handle Authentication Gate (Asynchronous with Supabase settings)
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const currentPwd = getAdminPassword();
-    if (passwordInput === currentPwd) {
-      setIsAuthenticated(true);
-      setAuthError("");
-    } else {
-      setAuthError("Sandi tidak selaras dengan catatan Kerajaan.");
+    setIsLoginLoading(true);
+    setAuthError("");
+    try {
+      const currentPwd = await getAdminPassword();
+      if (passwordInput === currentPwd) {
+        setIsAuthenticated(true);
+        setAuthError("");
+      } else {
+        setAuthError("Sandi tidak selaras dengan catatan Kerajaan.");
+      }
+    } catch (err: any) {
+      setAuthError(`Koneksi gagal: ${err.message || String(err)}`);
+    } finally {
+      setIsLoginLoading(false);
     }
   };
 
-  // Handle Change Password Form
-  const handleChangePassword = (e: React.FormEvent) => {
+  // Handle Change Password Form (Asynchronous with Supabase settings)
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    const activePwd = getAdminPassword();
-    if (oldPassword !== activePwd) {
-      setPwdMessage({ text: "Sandi lama salah.", isError: true });
-      return;
-    }
+    setPwdMessage(null);
     if (newPassword.length < 4) {
       setPwdMessage({ text: "Sandi baru minimal terdiri dari 4 karakter.", isError: true });
       return;
@@ -121,11 +127,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
       return;
     }
 
-    setAdminPassword(newPassword);
-    setPwdMessage({ text: "Sandi Berhasil Diperbarui!", isError: false });
-    setOldPassword("");
-    setNewPassword("");
-    setConfirmNewPassword("");
+    setIsPwdLoading(true);
+    try {
+      const activePwd = await getAdminPassword();
+      if (oldPassword !== activePwd) {
+        setPwdMessage({ text: "Sandi lama salah.", isError: true });
+        setIsPwdLoading(false);
+        return;
+      }
+
+      const res = await setAdminPassword(newPassword);
+      if (res.success) {
+        setPwdMessage({ text: "Sandi Berhasil Diperbarui di Database Kerajaan!", isError: false });
+        setOldPassword("");
+        setNewPassword("");
+        setConfirmNewPassword("");
+      } else {
+        setPwdMessage({ text: res.error || "Gagal memperbarui sandi.", isError: true });
+      }
+    } catch (err: any) {
+      setPwdMessage({ text: `Koneksi gagal: ${err.message || String(err)}`, isError: true });
+    } finally {
+      setIsPwdLoading(false);
+    }
   };
 
   // Open the creation form
@@ -242,7 +266,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
             <div className="relative">
               <input
                 type="password"
-                placeholder="Kata Sandi"
+                placeholder="Kata Sandi (Default: COTE 2026)"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 className="w-full text-xs bg-royal-dark border border-gold/25 focus:border-gold px-4 py-2.5 rounded text-gold-light placeholder-gold/30 focus:outline-none focus:ring-1 focus:ring-gold/30 font-mono"
@@ -261,10 +285,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
 
           <button
             type="submit"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-gold-dark via-gold to-gold-dark text-royal-dark font-heading text-xs uppercase tracking-widest font-semibold hover:brightness-110 active:scale-[0.99] transition-all rounded shadow-md cursor-pointer"
+            disabled={isLoginLoading}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-gold-dark via-gold to-gold-dark text-royal-dark font-heading text-xs uppercase tracking-widest font-semibold hover:brightness-110 active:scale-[0.99] transition-all rounded shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span>MASUK SESI</span>
-            <Unlock className="w-4 h-4" />
+            <span>{isLoginLoading ? "MEMVALIDASI..." : "MASUK SESI"}</span>
+            {isLoginLoading ? (
+              <div className="w-4 h-4 rounded-full border-2 border-royal-dark border-t-white animate-spin" />
+            ) : (
+              <Unlock className="w-4 h-4" />
+            )}
           </button>
         </form>
 
@@ -500,9 +529,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
 
               <button
                 type="submit"
-                className="px-4 py-1.5 bg-gold/10 hover:bg-gold/20 border border-gold/40 hover:border-gold text-gold rounded font-mono text-[10px] tracking-widest uppercase transition-all cursor-pointer"
+                disabled={isPwdLoading}
+                className="px-4 py-1.5 bg-gold/10 hover:bg-gold/20 border border-gold/40 hover:border-gold text-gold rounded font-mono text-[10px] tracking-widest uppercase transition-all cursor-pointer disabled:opacity-50"
               >
-                Ganti Sandi Panel
+                {isPwdLoading ? "Memproses..." : "Ganti Sandi Panel"}
               </button>
             </form>
           </div>
