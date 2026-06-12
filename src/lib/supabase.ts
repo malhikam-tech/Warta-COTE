@@ -64,7 +64,14 @@ export const DEFAULT_CHRONICLES: WartaCote[] = [
   },
 ];
 
-const STORAGE_KEY = "cote_chronicles_fallback";
+// Clear old cache storage keys to prevent conflicts
+try {
+  localStorage.removeItem("cote_chronicles_fallback");
+  localStorage.removeItem("cote_deleted_ids");
+} catch (e) {
+  // Ignore
+}
+
 const PWD_KEY = "cote_admin_password_hash_v2";
 
 /**
@@ -81,9 +88,6 @@ export function getAdminPassword(): string {
 export function setAdminPassword(newPassword: string): void {
   localStorage.setItem(PWD_KEY, newPassword);
 }
-
-// Global variable tracking if we are using local fallback currently
-export let IS_LOCAL_FALLBACK = false;
 
 // SQL Schema code to be shown in the UI
 export const SQL_SCHEMA_BLUEPRINT = `-- EKSEKUSI DI SUPABASE SQL EDITOR UNTUK AKSI REAL-TIME:
