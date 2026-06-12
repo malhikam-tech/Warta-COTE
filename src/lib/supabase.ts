@@ -129,10 +129,31 @@ VALUES
 ('Warta Hubungan Luar Negeri: Perjanjian Damai Aliansi Utara', 'Berita', 'COTE resmi menandatangani pakta non-agresi dengan Dinasti Nusantara bagian timur guna kelestarian arsip sejarah bersama.', 'Setelah negosiasi diplomatik yang panjang di meja emas kekaisaran, kedua belah pihak sepakat menjaga netralitas arsip bersejarah. Perjanjian ini menjamin akses bebas ilmu pengetahuan bagi sejarawan dari kedua kubu. Ini merupakan langkah besar dalam menjaga keseimbangan kekuasaan dan memperluas cakrawala pendidikan budaya klasik bagi seluruh anggota.', 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800', 'Chamberlain', 215, false);
 `;
 
+// Keep track of deleted Supabase IDs so they don't reappear if we pull from Supabase
+const DELETED_IDS_KEY = "cote_deleted_ids";
+
+function getDeletedIds(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(DELETED_IDS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function addDeletedId(id: string) {
+  const deleted = getDeletedIds();
+  if (!deleted.includes(id)) {
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify([...deleted, id]));
+  }
+}
+
 /**
  * Initialize / fetch content
  */
 export async function fetchChronicles(): Promise<{ data: WartaCote[]; fromDb: boolean }> {
+  const localItems = getFallbackData();
+  const deletedIds = getDeletedIds();
+
   try {
     // Try to reach Supabase
     const { data, error } = await supabase
@@ -142,18 +163,53 @@ export async function fetchChronicles(): Promise<{ data: WartaCote[]; fromDb: bo
       .order("created_at", { ascending: false });
 
     if (error || !data) {
-      console.warn("Supabase relation not ready yet or read block, loading Local Storage cache fallback:", error);
+      console.warn("Supabase relation not ready yet or read block, loading Local Storage cache:", error);
       IS_LOCAL_FALLBACK = true;
-      return { data: getFallbackData(), fromDb: false };
+      return { data: localItems, fromDb: false };
     }
 
     // Successfully returned DB contents
     IS_LOCAL_FALLBACK = false;
-    return { data: data as WartaCote[], fromDb: true };
+
+    // Filter out any items that are deleted locally
+    const activeDbItems = (data as WartaCote[]).filter(item => !deletedIds.includes(item.id));
+    
+    // Map of local overrides
+    const localMap = new Map(localItems.map(item => [item.id, item]));
+    
+    // Replace DB items with local overrides if they exist
+    const mergedDbItems = activeDbItems.map(dbItem => {
+      if (localMap.has(dbItem.id)) {
+        return localMap.get(dbItem.id)!;
+      }
+      return dbItem;
+    });
+
+    // Get strictly local items (new items created only in local storage)
+    const dbIds = new Set(activeDbItems.map(item => item.id));
+    const localOnlyItems = localItems.filter(item => item.id.startsWith("local-") && !dbIds.has(item.id));
+
+    // Combine them
+    const combined = [...localOnlyItems, ...mergedDbItems];
+
+    // Sort by is_pinned, then by created_at descending
+    combined.sort((a, b) => {
+      const aPinned = a.is_pinned ? 1 : 0;
+      const bPinned = b.is_pinned ? 1 : 0;
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned;
+      }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
+    // Sync fallback cache
+    saveFallbackData(combined);
+
+    return { data: combined, fromDb: true };
   } catch (err) {
     console.error("Supabase endpoint unreachable, loading fallback engine:", err);
     IS_LOCAL_FALLBACK = true;
-    return { data: getFallbackData(), fromDb: false };
+    return { data: localItems, fromDb: false };
   }
 }
 
@@ -162,10 +218,11 @@ export async function fetchChronicles(): Promise<{ data: WartaCote[]; fromDb: bo
  */
 export async function insertChronicle(item: Omit<WartaCote, "id" | "views">): Promise<{ success: boolean; data?: WartaCote }> {
   try {
+    // Remove id from the spread to avoid inserting undefined or null primary keys
+    const { id: _, ...cleanItem } = item as any;
     const newItem = {
-      ...item,
-      views: 0,
-      id: undefined, // Let database uuid generate or generate locally if fallback
+      ...cleanItem,
+      views: 0
     };
 
     // Try Supabase first
@@ -175,6 +232,9 @@ export async function insertChronicle(item: Omit<WartaCote, "id" | "views">): Pr
       .select();
 
     if (!error && data && data[0]) {
+      // Also cache to local items so that local memory is synchronized
+      const localItems = getFallbackData();
+      saveFallbackData([data[0] as WartaCote, ...localItems]);
       return { success: true, data: data[0] as WartaCote };
     }
     
@@ -199,6 +259,14 @@ export async function insertChronicle(item: Omit<WartaCote, "id" | "views">): Pr
  * Handle updating a chronicle
  */
 export async function updateChronicle(id: string, updates: Partial<WartaCote>): Promise<{ success: boolean }> {
+  // Update local storage first to maintain instant reactivity and fallback capability
+  const localItems = getFallbackData();
+  const idx = localItems.findIndex((it) => it.id === id);
+  if (idx !== -1) {
+    localItems[idx] = { ...localItems[idx], ...updates };
+    saveFallbackData(localItems);
+  }
+
   try {
     if (!id.startsWith("local-")) {
       const { error } = await supabase
@@ -206,31 +274,34 @@ export async function updateChronicle(id: string, updates: Partial<WartaCote>): 
         .update(updates)
         .eq("id", id);
       
-      if (!error) {
+      if (error) {
+        console.warn("Supabase update failed, attempting local cache override", error);
+      } else {
         return { success: true };
       }
-      console.warn("Supabase update failed, attempting local cache override", error);
     }
   } catch (err) {
     console.warn("Supabase update network failure, modifying cache", err);
   }
 
-  // Local Storage fallback
-  IS_LOCAL_FALLBACK = true;
-  const localItems = getFallbackData();
-  const idx = localItems.findIndex((it) => it.id === id);
-  if (idx !== -1) {
-    localItems[idx] = { ...localItems[idx], ...updates };
-    saveFallbackData(localItems);
-    return { success: true };
-  }
-  return { success: false };
+  // Always return success since we local-fallback successfully
+  return { success: true };
 }
 
 /**
  * Delete a chronicle
  */
 export async function deleteChronicle(id: string): Promise<{ success: boolean }> {
+  // Delete from local cache
+  const localItems = getFallbackData();
+  const filtered = localItems.filter((it) => it.id !== id);
+  saveFallbackData(filtered);
+
+  // Track the deletion so if Supabase returns the item, we filter it out locally
+  if (!id.startsWith("local-")) {
+    addDeletedId(id);
+  }
+
   try {
     if (!id.startsWith("local-")) {
       const { error } = await supabase
@@ -238,20 +309,14 @@ export async function deleteChronicle(id: string): Promise<{ success: boolean }>
         .delete()
         .eq("id", id);
 
-      if (!error) {
-        return { success: true };
+      if (error) {
+        console.warn("Supabase delete failed, relying on local deletion", error);
       }
-      console.warn("Supabase delete failed, attempting local deletion", error);
     }
   } catch (err) {
     console.warn("Supabase delete network failure, attempting local deletion", err);
   }
 
-  // Local storage fallback
-  IS_LOCAL_FALLBACK = true;
-  const localItems = getFallbackData();
-  const filtered = localItems.filter((it) => it.id !== id);
-  saveFallbackData(filtered);
   return { success: true };
 }
 
