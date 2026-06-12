@@ -261,12 +261,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
         <form onSubmit={handleLogin} className="space-y-4 text-left">
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-gold-light/70 mb-1.5 font-mono">
-              Kata Sandi Kerajaan
+              Kata Sandi
             </label>
             <div className="relative">
               <input
                 type="password"
-                placeholder="Kata Sandi (Default: COTE 2026)"
+                placeholder="Masukkan Kata Sandi"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 className="w-full text-xs bg-royal-dark border border-gold/25 focus:border-gold px-4 py-2.5 rounded text-gold-light placeholder-gold/30 focus:outline-none focus:ring-1 focus:ring-gold/30 font-mono"
