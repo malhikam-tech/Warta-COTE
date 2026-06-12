@@ -216,7 +216,7 @@ export async function fetchChronicles(): Promise<{ data: WartaCote[]; fromDb: bo
 /**
  * Handle adding a chronicle
  */
-export async function insertChronicle(item: Omit<WartaCote, "id" | "views">): Promise<{ success: boolean; data?: WartaCote }> {
+export async function insertChronicle(item: Omit<WartaCote, "id" | "views">): Promise<{ success: boolean; data?: WartaCote; error?: string }> {
   try {
     // Remove id from the spread to avoid inserting undefined or null primary keys
     const { id: _, ...cleanItem } = item as any;
@@ -231,93 +231,100 @@ export async function insertChronicle(item: Omit<WartaCote, "id" | "views">): Pr
       .insert([newItem])
       .select();
 
-    if (!error && data && data[0]) {
+    if (error) {
+      console.error("Supabase insert error:", error);
+      return { 
+        success: false, 
+        error: `Supabase Error: ${error.message} (Kode: ${error.code || "N/A"}). Silakan pastikan tabel dan RLS di Supabase sudah dibuat menggunakan perintah SQL Blueprint.` 
+      };
+    }
+
+    if (data && data[0]) {
       // Also cache to local items so that local memory is synchronized
       const localItems = getFallbackData();
       saveFallbackData([data[0] as WartaCote, ...localItems]);
       return { success: true, data: data[0] as WartaCote };
     }
     
-    console.warn("Could not insert to Supabase, writing to local memory database...", error);
-  } catch (err) {
-    console.warn("Supabase network error, writing to local memory database...", err);
+    return { success: false, error: "Database tidak mengembalikan nilai atau kosong." };
+  } catch (err: any) {
+    console.error("Supabase catch error during insert:", err);
+    return { success: false, error: `Koneksi Gagalan: ${err.message || err}` };
   }
-
-  // Local storage fallback
-  IS_LOCAL_FALLBACK = true;
-  const localItems = getFallbackData();
-  const created: WartaCote = {
-    ...item,
-    id: `local-${Date.now()}`,
-    views: 0,
-  };
-  saveFallbackData([created, ...localItems]);
-  return { success: true, data: created };
 }
 
 /**
  * Handle updating a chronicle
  */
-export async function updateChronicle(id: string, updates: Partial<WartaCote>): Promise<{ success: boolean }> {
-  // Update local storage first to maintain instant reactivity and fallback capability
-  const localItems = getFallbackData();
-  const idx = localItems.findIndex((it) => it.id === id);
-  if (idx !== -1) {
-    localItems[idx] = { ...localItems[idx], ...updates };
-    saveFallbackData(localItems);
-  }
-
+export async function updateChronicle(id: string, updates: Partial<WartaCote>): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!id.startsWith("local-")) {
-      const { error } = await supabase
-        .from("warta_cote")
-        .update(updates)
-        .eq("id", id);
-      
-      if (error) {
-        console.warn("Supabase update failed, attempting local cache override", error);
-      } else {
-        return { success: true };
+    if (id.startsWith("local-")) {
+      const localItems = getFallbackData();
+      const idx = localItems.findIndex((it) => it.id === id);
+      if (idx !== -1) {
+        localItems[idx] = { ...localItems[idx], ...updates };
+        saveFallbackData(localItems);
       }
+      return { success: true };
     }
-  } catch (err) {
-    console.warn("Supabase update network failure, modifying cache", err);
-  }
 
-  // Always return success since we local-fallback successfully
-  return { success: true };
+    const { error } = await supabase
+      .from("warta_cote")
+      .update(updates)
+      .eq("id", id);
+    
+    if (error) {
+      console.error("Supabase update error:", error);
+      return { success: false, error: `Supabase Error: ${error.message} (Kode: ${error.code || "N/A"})` };
+    }
+
+    // Success on DB, sync to local cache
+    const localItems = getFallbackData();
+    const idx = localItems.findIndex((it) => it.id === id);
+    if (idx !== -1) {
+      localItems[idx] = { ...localItems[idx], ...updates };
+      saveFallbackData(localItems);
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("Supabase update exception:", err);
+    return { success: false, error: `Koneksi Gagalan: ${err.message || err}` };
+  }
 }
 
 /**
  * Delete a chronicle
  */
-export async function deleteChronicle(id: string): Promise<{ success: boolean }> {
-  // Delete from local cache
-  const localItems = getFallbackData();
-  const filtered = localItems.filter((it) => it.id !== id);
-  saveFallbackData(filtered);
-
-  // Track the deletion so if Supabase returns the item, we filter it out locally
-  if (!id.startsWith("local-")) {
-    addDeletedId(id);
-  }
-
+export async function deleteChronicle(id: string): Promise<{ success: boolean; error?: string }> {
   try {
-    if (!id.startsWith("local-")) {
-      const { error } = await supabase
-        .from("warta_cote")
-        .delete()
-        .eq("id", id);
-
-      if (error) {
-        console.warn("Supabase delete failed, relying on local deletion", error);
-      }
+    if (id.startsWith("local-")) {
+      const localItems = getFallbackData();
+      const filtered = localItems.filter((it) => it.id !== id);
+      saveFallbackData(filtered);
+      return { success: true };
     }
-  } catch (err) {
-    console.warn("Supabase delete network failure, attempting local deletion", err);
-  }
 
-  return { success: true };
+    const { error } = await supabase
+      .from("warta_cote")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error("Supabase delete error:", error);
+      return { success: false, error: `Supabase Error: ${error.message} (Kode: ${error.code || "N/A"})` };
+    }
+
+    // Delete from cache too
+    const localItems = getFallbackData();
+    const filtered = localItems.filter((it) => it.id !== id);
+    saveFallbackData(filtered);
+    addDeletedId(id);
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("Supabase delete exception:", err);
+    return { success: false, error: `Koneksi Gagalan: ${err.message || err}` };
+  }
 }
 
 /**

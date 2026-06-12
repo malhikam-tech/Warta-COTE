@@ -164,7 +164,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
           onRefresh();
           setActiveTab("list");
         } else {
-          setFormError("Gagal memperbarui catatan warta.");
+          setFormError(res.error || "Gagal memperbarui catatan warta.");
         }
       } else {
         const res = await insertChronicle(payload);
@@ -172,7 +172,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
           onRefresh();
           setActiveTab("list");
         } else {
-          setFormError("Gagal menambahkan warta baru.");
+          setFormError(res.error || "Gagal menambahkan warta baru.");
         }
       }
     } catch (err: any) {
@@ -188,7 +188,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
       if (res.success) {
         onRefresh();
       } else {
-        alert("Gagal menghapus warta.");
+        alert(res.error || "Gagal menghapus warta.");
       }
     }
   };
