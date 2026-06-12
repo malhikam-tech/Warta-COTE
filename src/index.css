@@ -53,11 +53,13 @@
   }
 }
 
-body {
+html, body, #root {
   background-color: var(--color-royal-dark);
   color: #e2d9c2;
   font-family: var(--font-sans);
   overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
 }
 
 /* Subtle page ambient glow effects */

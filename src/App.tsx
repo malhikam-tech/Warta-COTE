@@ -97,7 +97,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen relative bg-royal-dark text-gold-light/95 selection:bg-gold-dark selection:text-royal-dark font-sans antialiased flex flex-col justify-between">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden relative bg-royal-dark text-gold-light/95 selection:bg-gold-dark selection:text-royal-dark font-sans antialiased flex flex-col justify-between">
       
       {/* Decorative Golden Ambient Gradients & Background Patterns */}
       <div className="ambient-glow top-0 left-1/4" />
@@ -320,18 +320,27 @@ export default function App() {
                       >
                         <ImperialCorners />
 
-                        {/* Image Header */}
-                        <div className="relative h-40 overflow-hidden bg-royal-dark/40 border-b border-gold/10 shrink-0">
+                        {/* Image Header with Medieval Fallback Background */}
+                        <div className="relative h-40 overflow-hidden bg-royal-dark/95 border-b border-gold/10 shrink-0 flex items-center justify-center bg-gradient-to-br from-royal-crimson/20 via-royal-dark to-royal-dark">
+                          {/* Rich Fallback Custom-Branded Background Placeholder */}
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 opacity-60 select-none pointer-events-none">
+                            <span className="text-xl text-gold/30">⚜</span>
+                            <span className="font-heading text-[9px] tracking-[0.2em] text-gold-light/20 font-bold">COTE COMMUNITY</span>
+                          </div>
+
                           <img
                             src={item.image_url || "https://images.unsplash.com/photo-1599727497674-80dc02617a32?auto=format&fit=crop&q=80&w=400"}
                             alt={item.title}
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 z-10"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-royal-dark via-transparent to-transparent opacity-80" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-royal-dark via-transparent to-transparent opacity-80 z-20" />
                           
                           {/* Floating Pinned & Category status */}
-                          <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+                          <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-30">
                             <span className={`px-2 py-0.5 text-[8px] font-mono tracking-widest uppercase border rounded-full backdrop-blur-md ${
                               item.category === "Berita" ? "border-sky-500/40 text-sky-300 bg-sky-950/70" :
                               item.category === "Edukasi" ? "border-emerald-500/40 text-emerald-300 bg-emerald-950/70" :
@@ -462,13 +471,22 @@ export default function App() {
               </span>
             </div>
 
-            {/* Big cover photo within reader */}
-            <div className="w-full h-56 rounded border border-amber-900/20 overflow-hidden mb-6 shadow-md shadow-amber-950/10">
+            {/* Big cover photo within reader with Parchment Fallback */}
+            <div className="w-full h-56 rounded border border-amber-900/20 overflow-hidden mb-6 shadow-md shadow-amber-950/10 relative flex items-center justify-center bg-gradient-to-br from-amber-900/10 to-amber-900/5">
+              {/* Antique Minimalist Background placeholder */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 opacity-60 select-none pointer-events-none">
+                <span className="text-xl text-amber-950/30">⚜</span>
+                <span className="font-heading text-[9px] tracking-[0.2em] text-amber-950/20 font-bold">COTE MANUSCRIPT</span>
+              </div>
+
               <img
                 src={selectedChronicle.image_url || "https://images.unsplash.com/photo-1599727497674-80dc02617a32?auto=format&fit=crop&q=80&w=800"}
                 alt={selectedChronicle.title}
-                className="w-full h-full object-cover grayscale-[10%] hover:grayscale-0 transition"
+                className="absolute inset-0 w-full h-full object-cover grayscale-[10%] hover:grayscale-0 transition z-10"
                 referrerPolicy="no-referrer"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
               />
             </div>
 

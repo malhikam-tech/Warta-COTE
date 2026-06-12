@@ -369,11 +369,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ chronicles, onRefresh, o
                     <tr key={item.id} className="hover:bg-gold/5 transition-colors group">
                       <td className="p-3">
                         <div className="flex items-center gap-3">
-                          <img
-                            src={item.image_url || "https://images.unsplash.com/photo-1599727497674-80dc02617a32?auto=format&fit=crop&q=80&w=200"}
-                            alt={item.title}
-                            className="w-10 h-10 object-cover rounded border border-gold/20 shrink-0"
-                          />
+                          <div className="w-10 h-10 rounded border border-gold/20 shrink-0 overflow-hidden relative flex items-center justify-center bg-royal-dark/95">
+                            <span className="text-[10px] text-gold/30 select-none">⚜</span>
+                            <img
+                              src={item.image_url || "https://images.unsplash.com/photo-1599727497674-80dc02617a32?auto=format&fit=crop&q=80&w=200"}
+                              alt={item.title}
+                              className="absolute inset-0 w-full h-full object-cover z-10"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
+                          </div>
                           <div className="min-w-0 max-w-[280px]">
                             <div className="flex items-center gap-1.5">
                               {item.is_pinned && <Pin className="w-3.5 h-3.5 text-gold self-center" />}
